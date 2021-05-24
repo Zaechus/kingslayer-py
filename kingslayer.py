@@ -76,16 +76,15 @@ def lex(s):
             if words[x] in ["in", "inside", "from", "on", "with"]
         ]
 
-        if len(prep_pos) > 0:
-            if prep_pos[0] == 0:
-                return CmdTokens(words[0], " ".join(words[1:]))
-            elif len(words[prep_pos[0] + 1:]) == 0:
-                return CmdTokens(" ".join(words[1:prep_pos[0]]),
-                                 words[prep_pos[0]])
-            else:
-                return CmdTokens(" ".join(words[1:prep_pos[0]]),
-                                 words[prep_pos[0]],
-                                 " ".join(words[prep_pos[0] + 1:]))
+        if len(prep_pos) > 0 and prep_pos[0] != 0:
+            obj, obj_prep = "", ""
+            if len(words[1:prep_pos[0]]) != 0:
+                obj = " ".join(words[1:prep_pos[0]])
+
+            if len(words[prep_pos[0] + 1:]) != 0:
+                obj_prep = " ".join(words[prep_pos[0] + 1:])
+
+            return CmdTokens(words[0], obj, words[prep_pos[0]], obj_prep)
         else:
             return CmdTokens(words[0], " ".join(words[1:]))
 
@@ -128,7 +127,8 @@ def parse(command, world, player):
         if command.prep == "with":
             if command.obj != "":
                 if command.obj_prep != "":
-                    world.harm_enemy(command.obj, player.attack(command.obj_prep))
+                    return world.harm_enemy(command.obj, command.obj_prep,
+                                            player.attack(command.obj_prep))
                 else:
                     return "I don't know what to attack with!"
             else:
@@ -137,6 +137,18 @@ def parse(command, world, player):
             return "That doesn't make any sense."
     else:
         return "I do not understand that phrase."
+
+
+class Enemy:
+    def __init__(self, name, desc):
+        self.name = name
+        self.desc = desc
+        self.hp = 10
+        self.damage = 2
+
+    def take_damage(self, damage):
+        self.hp -= damage
+        return f"The {self.name} screams in pain and becomes angrier."
 
 
 class Item:
@@ -159,6 +171,7 @@ class Room:
         self.desc = desc
         self.pathways = []
         self.items = []
+        self.enemies = []
 
     def add_pathway(self, pathway):
         self.pathways.append(pathway)
@@ -166,12 +179,27 @@ class Room:
     def add_item(self, item):
         self.items.append(item)
 
+    def add_enemy(self, enemy):
+        self.enemies.append(enemy)
+
+    def item_pos(self, item_name):
+        for x in range(len(self.items)):
+            if self.items[x].name == item_name:
+                return x
+
+    def enemy_pos(self, enemy_name):
+        for x in range(len(self.enemies)):
+            if self.enemies[x].name == enemy_name:
+                return x
+
     def look(self):
         res = f"{self.name}\n{self.desc}"
         for p in self.pathways:
             res += "\n" + p.desc
         for i in self.items:
             res += "\n" + i.desc
+        for e in self.enemies:
+            res += "\n" + e.desc
         return res
 
     def get_pathway(self, direction):
@@ -180,12 +208,9 @@ class Room:
                 return p
 
     def give_item(self, item_name):
-        item_pos = None
-        for i in range(len(self.items)):
-            if self.items[i].name == item_name:
-                item_pos = i
-        if item_pos != None:
-            return self.items.pop(item_pos)
+        pos = self.item_pos(item_name)
+        if pos != None:
+            return self.items.pop(pos)
 
     def recv_item(self, item):
         if item != None:
@@ -193,6 +218,13 @@ class Room:
             return "Dropped."
         else:
             return "You do not have that item."
+
+    def harm_enemy(self, enemy_name, damage):
+        pos = self.enemy_pos(enemy_name)
+        if pos != None:
+            return self.enemies[pos].take_damage(damage)
+        else:
+            return f"There is no '{enemy_name}'"
 
 
 class World:
@@ -202,6 +234,14 @@ class World:
 
     def add_room(self, key, room):
         self.rooms[key] = room
+
+    def clear_dead_enemies(self):
+        res = ""
+        for x in range(len(self.rooms[self.curr_room].enemies)):
+            if self.rooms[self.curr_room].enemies[x].hp < 0:
+                res += f"\nThe {self.rooms[self.curr_room].enemies[x].name} dies."
+                self.rooms[self.curr_room].enemies.pop(x)
+        return res
 
     def look(self):
         return self.rooms[self.curr_room].look()
@@ -220,10 +260,16 @@ class World:
     def recv_item(self, item):
         return self.rooms[self.curr_room].recv_item(item)
 
+    def harm_enemy(self, enemy_name, weapon_name, damage):
+        if damage != None:
+            return self.rooms[self.curr_room].harm_enemy(enemy_name, damage)
+        else:
+            return f"You do not have the '{weapon_name}'"
+
 
 class Player:
     def __init__(self):
-        self.hp = (10, 10)
+        self.hp = 10
         self.inventory = []
 
     def put_inventory(self):
@@ -235,6 +281,11 @@ class Player:
         else:
             return "Your inventory is empty."
 
+    def item_pos(self, item_name):
+        for x in range(len(self.inventory)):
+            if self.inventory[x].name == item_name:
+                return x
+
     def take(self, item):
         if item != None:
             self.inventory.append(item)
@@ -243,21 +294,41 @@ class Player:
             return "No item found."
 
     def drop(self, item_name):
-        item_pos = None
-        for i in range(len(self.inventory)):
-            if self.inventory[i].name == item_name:
-                item_pos = i
-        if item_pos != None:
-            return self.inventory.pop(item_pos)
+        pos = self.item_pos(item_name)
+        if pos != None:
+            return self.inventory.pop(pos)
+
+    def attack(self, item_name):
+        pos = self.item_pos(item_name)
+        if pos != None:
+            return self.inventory[pos].damage
+
+    def take_damage(self, enemy_name, damage):
+        self.hp -= damage
+        return f"The {enemy_name} hits you for {damage} damage. You have {self.hp} HP left."
 
 
 world = World("Circle Room")
 
+# Start Room
 start_room = Room("Circle Room", "You stand in a circular room made of stone.")
 start_room.add_pathway(
     Pathway(["north", "hallway", "opening"], "Hallway",
             "An opening to the north shows a hallway."))
+start_room.add_pathway(
+    Pathway(["west", "tunnel"], "Long Tunnel",
+            "There is a tunnel to the west."))
 
+# Long Tunnel
+long_tunnel = Room("Long Tunnel", "You crouch in a long, dark tunnel.")
+long_tunnel.add_pathway(
+    Pathway(["west", "tunnel"], "Long Tunnel",
+            "The tunnel continues to the west."))
+long_tunnel.add_pathway(
+    Pathway(["east", "light"], "Circle Room",
+            "There is light coming from the east."))
+
+# Hallway
 hallway = Room("Hallway", "You are in a long thin hallway.")
 hallway.add_pathway(
     Pathway(["south"], "Circle Room", "The hallway opens towards the south."))
@@ -266,23 +337,47 @@ hallway.add_pathway(
         "north",
     ], "Mud Room",
             "There is a dirty smell coming from the path to the north."))
+
 hallway.add_item(Item("sword", "There is a sword here.", 5))
 
+# Mud Room
 mud_room = Room("Mud Room",
                 "You stand knee deep in a room of mud. It's hard to move.")
 mud_room.add_pathway(
     Pathway(["south", "hallway"], "Hallway",
             "There is a hallway to the south."))
 
+mud_room.add_enemy(
+    Enemy("pig", "There is a pig here; it snorts angrily at you."))
+
 world.add_room("Circle Room", start_room)
+world.add_room("Long Tunnel", long_tunnel)
 world.add_room("Hallway", hallway)
 world.add_room("Mud Room", mud_room)
 
 player = Player()
 
-print("Use 'help' if you get confused.")
+print("Use 'help' if you get confused.\n")
+
+print(parse(CmdTokens("look"), world, player))
 
 while True:
     command = lex(input("\n> "))
 
-    print(parse(command, world, player))
+    res = parse(command, world, player)
+
+    events = ""
+
+    events += world.clear_dead_enemies()
+    for e in world.rooms[world.curr_room].enemies:
+        events += "\n" + player.take_damage(e.name, e.damage)
+
+    print(res, events)
+
+    if player.hp <= 0:
+        print("You died.")
+        break
+
+    if "dies" in events:
+        print("You win!")
+        break
