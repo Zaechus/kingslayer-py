@@ -1,3 +1,3 @@
-# pigslayer
+# Pigslayer
 
-A Python demo of Kingslayer made for a mandatory project.
+A Python demo of Kingslayer made for a project.
