@@ -124,17 +124,17 @@ def parse(command, world, player):
         else:
             return "I don't know what to drop!"
     elif command.verb == "attack":
-        if command.prep == "with":
-            if command.obj != "":
-                if command.obj_prep != "":
+        if command.obj != "":
+            if command.obj_prep != "":
+                if command.prep == "with":
                     return world.harm_enemy(command.obj, command.obj_prep,
                                             player.attack(command.obj_prep))
                 else:
-                    return "I don't know what to attack with!"
+                    return "That doesn't make any sense."
             else:
-                return "I don't know what to attack!"
+                return "I don't know what to attack with!"
         else:
-            return "That doesn't make any sense."
+            return "I don't know what to attack!"
     else:
         return "I do not understand that phrase."
 
