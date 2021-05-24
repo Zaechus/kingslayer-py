@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-print("\n~~ KINGSLAYER ~~\n\n"
+print("\n~~ PIGSLAYER ~~\n\n"
       "Based on the original version written in Rust at "
       "https://github.com/Zaechus/kingslayer\n")
 
